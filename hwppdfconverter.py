@@ -85,9 +85,6 @@ async def html_to_pdf(html_file, pdf_file=None):
         browser = await launch(**launch_options)
         page = await browser.newPage()
         
-        # 페이지 뷰포트 설정 - 적절한 가로 여백을 추가
-        await page.setViewport({'width': 1050, 'height': 1485, 'deviceScaleFactor': 1.5})
-        
         # HTML 파일 로드 (file:/// 프로토콜 사용 - 슬래시 3개)
         # Windows 경로에서는 특수 처리 필요
         html_absolute_path = html_path.absolute()
@@ -123,34 +120,34 @@ async def html_to_pdf(html_file, pdf_file=None):
                     print(f"CSS 파일 발견: {css_path}")
                     with open(css_path, 'r', encoding='utf-8') as f:
                         css_content = f.read()
-                    
-                    # HTML에 CSS 인라인 추가 (head 태그 내부에 style 태그 추가)
-                    if "<head>" in html_content and css_content:
-                        html_with_css = html_content.replace(
-                            "<head>", 
-                            f"<head><style type=\"text/css\">{css_content}</style>"
-                        )
-                        html_content = html_with_css
-                        print("CSS를 HTML에 인라인으로 추가했습니다.")
                 
-                # 왼쪽 경계선 문제 해결을 위한 추가 스타일
-                extra_style = """
-                <style>
-                body {
-                    margin: 0;
-                    padding: 1.5cm 1.5cm 1.5cm 2cm; /* 왼쪽 여백 추가 */
-                    box-sizing: border-box;
-                }
-                * {
-                    box-sizing: border-box;
-                }
-                </style>
+                # @page CSS 규칙 추가 - 여백 제거를 위한 핵심 수정 부분
+                page_css = """
+@page {
+  margin: 0;
+  padding: 0;
+  size: A4;
+}
+html, body {
+  margin: 0;
+  padding: 0;
+}
                 """
                 
-                # <head> 닫는 태그 전에 스타일 추가
-                if "</head>" in html_content:
-                    html_content = html_content.replace("</head>", f"{extra_style}</head>")
-                    print("왼쪽 경계선 문제 해결을 위한 추가 스타일 적용됨")
+                # HTML에 CSS 인라인 추가 (head 태그 내부에 style 태그 추가)
+                if "<head>" in html_content:
+                    if css_content:
+                        html_with_css = html_content.replace(
+                            "<head>", 
+                            f"<head><style type=\"text/css\">{page_css}{css_content}</style>"
+                        )
+                    else:
+                        html_with_css = html_content.replace(
+                            "<head>", 
+                            f"<head><style type=\"text/css\">{page_css}</style>"
+                        )
+                    html_content = html_with_css
+                    print("@page CSS 규칙과 기존 CSS를 HTML에 인라인으로 추가했습니다.")
                 
                 # 직접 HTML 콘텐츠 설정
                 await page.setContent(html_content, {
@@ -158,33 +155,38 @@ async def html_to_pdf(html_file, pdf_file=None):
                     'timeout': 60000
                 })
                 print("HTML 콘텐츠를 직접 설정했습니다.")
+                
+                # 디버깅용 스크린샷 생성
+                debug_screenshot = html_path.parent / "debug_screenshot.png"
+                await page.screenshot({'path': str(debug_screenshot), 'fullPage': True})
+                print(f"디버깅용 스크린샷 저장됨: {debug_screenshot}")
+                
             except Exception as e:
                 print(f"HTML 또는 CSS 파일 읽기 오류: {e}")
         else:
-            # 페이지에 추가 스타일 주입
+            # 페이지가 제대로 로드된 경우에도 @page CSS 규칙 주입
             await page.addStyleTag({
                 'content': """
-                body {
-                    margin: 0;
-                    padding: 1.5cm 1.5cm 1.5cm 2cm; /* 왼쪽 여백 추가 */
-                    box-sizing: border-box;
-                }
-                * {
-                    box-sizing: border-box;
-                }
+@page {
+  margin: 0;
+  padding: 0;
+  border: none !important;
+}
+html, body {
+  margin: 0;
+  padding: 0;
+}
                 """
             })
-            print("로드된 페이지에 왼쪽 경계선 문제 해결을 위한 스타일 주입됨")
+            print("@page CSS 규칙을 페이지에 추가했습니다.")
         
         print("PDF 생성 중...")
-        # PDF 생성 옵션 수정
         await page.pdf({
             'path': str(pdf_path),
             'format': 'A4',
             'printBackground': True,
-            'margin': {'top': '1cm', 'right': '1cm', 'bottom': '1cm', 'left': '1.5cm'}, # 왼쪽 여백 증가
-            'displayHeaderFooter': False, # 헤더/푸터 비활성화
-            'preferCSSPageSize': True, # CSS 페이지 크기 설정 사용
+            'margin': {'top': '0', 'right': '0', 'bottom': '0', 'left': '0'},
+            'preferCSSPageSize': True  # CSS의 @page 규칙 사용 설정
         })
         
         if pdf_path.exists():
