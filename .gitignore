@@ -1,3 +1,5 @@
 *.hwp
 *.html
 *.pdf
+
+hwp2pdf-api/venv
