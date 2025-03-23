@@ -3,3 +3,4 @@
 *.pdf
 
 hwp2pdf-api/venv
+lambda-chrome-layer/nodejs/node_modules
